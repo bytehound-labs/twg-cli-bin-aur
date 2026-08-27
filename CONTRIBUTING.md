@@ -77,7 +77,7 @@ Load the AUR private key into the GitHub Actions secret without printing it:
 ```bash
 gh secret set AUR_SSH_PRIVATE_KEY \
   --repo bytehound-labs/twg-cli-bin-aur \
-  < ~/.ssh/id_ed25519
+  < ~/.ssh/id_rsa
 ```
 
 The matching public key must be registered with the AUR account that owns
