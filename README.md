@@ -9,6 +9,12 @@ Teamwork Graph CLI (`twg`). It installs the vendor-supplied binary at
 Install from the Arch User Repository with an AUR helper:
 
 ```bash
+yay -S twg-cli-bin
+```
+
+Alternatively, use `paru`:
+
+```bash
 paru -S twg-cli-bin
 ```
 
