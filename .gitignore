@@ -1,0 +1,6 @@
+pkg/
+src/
+twg-cli-LICENSE
+twg-linux-*
+*.pkg.tar.*
+*.log

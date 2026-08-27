@@ -1,0 +1,138 @@
+name: Update AUR package
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      full_build:
+        description: "Run a full local package build before publishing"
+        required: false
+        type: boolean
+        default: false
+      publish_current:
+        description: "Attempt the AUR publish step even if the package is unchanged"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-aur-package
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    defaults:
+      run:
+        shell: bash
+    env:
+      AUR_PACKAGE_NAME: twg-cli-bin
+      AUR_REMOTE: ssh://aur@aur.archlinux.org/twg-cli-bin.git
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install packaging tools
+        run: |
+          pacman -Syu --noconfirm --needed curl file git jq namcap openssh
+
+      - name: Prepare build user
+        run: |
+          if ! id builder >/dev/null 2>&1; then
+            useradd --create-home --shell /bin/bash builder
+          fi
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Update packaging files
+        id: update
+        run: |
+          runuser -u builder -- env \
+            GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -lc '
+              cd "$GITHUB_WORKSPACE"
+              ./scripts/update-upstream-release.sh
+            '
+
+          pkgver="$(sed -n "s/^pkgver=//p" PKGBUILD | head -n 1)"
+          pkgrel="$(sed -n "s/^pkgrel=//p" PKGBUILD | head -n 1)"
+          echo "pkgver=$pkgver" >> "$GITHUB_OUTPUT"
+          echo "pkgrel=$pkgrel" >> "$GITHUB_OUTPUT"
+
+          if git diff --quiet -- PKGBUILD .SRCINFO; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate packaging update
+        if: steps.update.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.full_build)
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.full_build }}" == "true" ]]; then
+            runuser -u builder -- env \
+              GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+              bash -lc '
+                cd "$GITHUB_WORKSPACE"
+                ./scripts/validate-package.sh --build
+              '
+          else
+            runuser -u builder -- env \
+              GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+              bash -lc '
+                cd "$GITHUB_WORKSPACE"
+                ./scripts/validate-package.sh
+              '
+          fi
+
+      - name: Commit update to GitHub mirror
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "chore: bump twg-cli-bin to ${{ steps.update.outputs.pkgver }}"
+
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GITHUB_TOKEN}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+
+      - name: Configure AUR SSH
+        if: steps.update.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_current)
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo "::error::Missing AUR_SSH_PRIVATE_KEY secret"
+            exit 1
+          fi
+
+          ssh_dir="$RUNNER_TEMP/aur-ssh"
+          install -d -m 700 "$ssh_dir"
+          install -m 600 /dev/null "$ssh_dir/aur"
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$ssh_dir/aur"
+          install -m 644 .github/aur-known_hosts "$ssh_dir/known_hosts"
+
+          {
+            echo "AUR_SSH_DIR=$ssh_dir"
+            echo "GIT_SSH_COMMAND=ssh -i $ssh_dir/aur -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$ssh_dir/known_hosts"
+          } >> "$GITHUB_ENV"
+
+      - name: Publish package files to AUR
+        if: steps.update.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_current)
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          ./scripts/publish-aur-tree.sh PKGBUILD .SRCINFO
