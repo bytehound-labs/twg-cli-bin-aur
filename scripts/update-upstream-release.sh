@@ -200,7 +200,10 @@ sed \
 	-e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${latest_arm64_sha}')/" \
 	PKGBUILD > "$update_dir/PKGBUILD"
 
-makepkg --printsrcinfo -p "$update_dir/PKGBUILD" > "$update_dir/.SRCINFO"
+(
+	cd "$update_dir"
+	makepkg --printsrcinfo -p PKGBUILD
+) > "$update_dir/.SRCINFO"
 mv "$update_dir/PKGBUILD" PKGBUILD
 mv "$update_dir/.SRCINFO" .SRCINFO
 

@@ -140,7 +140,7 @@ grep -Eq 'ELF 64-bit.*x86-64' <<<"$x64_file_type" ||
 grep -Eq 'ELF 64-bit.*ARM aarch64' <<<"$arm64_file_type" ||
 	{ echo "aarch64 artifact is not an ARM ELF: $arm64_file_type" >&2; exit 1; }
 
-makepkg --verifysource --nocolor
+makepkg --verifysource --force --nocolor
 namcap PKGBUILD
 
 if [[ "${RUN_SMOKE_TEST:-1}" != 0 ]]; then
@@ -164,6 +164,7 @@ if [[ "${RUN_SMOKE_TEST:-1}" != 0 ]]; then
 		esac
 
 		if [[ -n "$smoke_binary" ]]; then
+			chmod +x "$smoke_binary"
 			version_output="$(
 				DO_NOT_TRACK=1 "$smoke_binary" --version 2>&1
 			)" || {
