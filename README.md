@@ -1,8 +1,9 @@
 # twg-cli-bin AUR package
 
 `twg-cli-bin` is an unofficial Arch Linux package for the prebuilt Atlassian
-Teamwork Graph CLI (`twg`). It installs the vendor-supplied binary at
-`/usr/bin/twg` for `x86_64` and `aarch64`.
+Teamwork Graph CLI (`twg`). It installs a packaged binary at `/usr/bin/twg` for
+`x86_64` and `aarch64`, using the vendor application payload and a compatible
+runtime on x86_64.
 
 ## Installation
 
@@ -44,10 +45,11 @@ The package supports:
 - `x86_64`
 - `aarch64`
 
-The upstream Linux `x86_64` artifact uses AVX2 instructions. Older x86_64
-processors without AVX2 may exit with `Illegal instruction`; the package
-preserves the upstream binary and does not claim compatibility with those
-processors.
+For `x86_64`, the package keeps the Atlassian application payload but replaces
+its bundled standard Bun runtime with the matching Bun x64-baseline runtime.
+This avoids the AVX2 requirement observed in the upstream artifact and allows
+the CLI to run on supported older x86_64 processors without AVX2. The
+`aarch64` package uses the Atlassian artifact unchanged.
 
 An unrelated AUR package named `twg` provides a Twitter client and also owns
 `/usr/bin/twg`. Remove that package before installing `twg-cli-bin`.
@@ -67,7 +69,8 @@ This package is not maintained, endorsed, or sponsored by Atlassian.
 
 The [GitHub mirror](https://github.com/bytehound-labs/twg-cli-bin-aur) polls the
 stable manifest, validates the downloaded artifacts, updates the package
-metadata, and publishes only `PKGBUILD` and `.SRCINFO` to the
+metadata, rebases the x86_64 runtime when needed, and publishes only
+`PKGBUILD`, `.SRCINFO`, and the rebasing helper to the
 [AUR package repository](https://aur.archlinux.org/packages/twg-cli-bin). The
 mirror uses the stable manifest as its release source rather than GitHub
-release metadata.
+release metadata, and pins the matching Bun baseline archive by SHA-256.

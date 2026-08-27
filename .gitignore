@@ -2,5 +2,7 @@ pkg/
 src/
 twg-cli-LICENSE
 twg-linux-*
+bun-linux-*
+__pycache__/
 *.pkg.tar.*
 *.log

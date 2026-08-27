@@ -38,7 +38,7 @@ while (($# > 0)); do
 	esac
 done
 
-for command in awk curl git jq makepkg mktemp sed sha256sum sort; do
+for command in awk curl jq makepkg mktemp python sed sha256sum sort; do
 	require_command "$command"
 done
 
@@ -102,8 +102,10 @@ download "$checksums_url" "$sums_path"
 download "$license_url" "$license_path"
 
 checksum_for() {
-	local filename="$1"
-	awk -v target="$filename" '
+	local sums_file="$1"
+	local target="$2"
+
+	awk -v target="$target" '
 		{
 			name = $2
 			sub(/^\*/, "", name)
@@ -113,7 +115,7 @@ checksum_for() {
 				exit
 			}
 		}
-	' "$sums_path"
+	' "$sums_file"
 }
 
 validate_checksum() {
@@ -128,26 +130,80 @@ validate_checksum() {
 
 x64_name="twg-linux-x64-v${latest_pkgver}"
 arm64_name="twg-linux-arm64-v${latest_pkgver}"
-latest_x64_sha="$(checksum_for "$x64_name")"
-latest_arm64_sha="$(checksum_for "$arm64_name")"
+latest_x64_sha="$(checksum_for "$sums_path" "$x64_name")"
+latest_arm64_sha="$(checksum_for "$sums_path" "$arm64_name")"
 latest_license_sha="$(sha256sum "$license_path" | awk '{print $1}')"
 validate_checksum "$x64_name" "$latest_x64_sha"
 validate_checksum "$arm64_name" "$latest_arm64_sha"
 validate_checksum LICENSE "$latest_license_sha"
 
-current_pkgver="$(sed -nE 's/^pkgver=([^[:space:]]+).*$/\1/p' PKGBUILD | head -n 1)"
-current_pkgrel="$(sed -nE 's/^pkgrel=([^[:space:]]+).*$/\1/p' PKGBUILD | head -n 1)"
-current_license_sha="$(sed -nE "s/^sha256sums=\\('([^']+)'\\).*$/\\1/p" PKGBUILD | head -n 1)"
-current_x64_sha="$(sed -nE "s/^sha256sums_x86_64=\\('([^']+)'\\).*$/\\1/p" PKGBUILD | head -n 1)"
-current_arm64_sha="$(sed -nE "s/^sha256sums_aarch64=\\('([^']+)'\\).*$/\\1/p" PKGBUILD | head -n 1)"
+downloaded_x64="$workdir/$x64_name"
+download "$x64_url" "$downloaded_x64"
+printf '%s  %s\n' "$latest_x64_sha" "$downloaded_x64" |
+	sha256sum --check --status
 
-if [[ -z "$current_pkgver" || -z "$current_pkgrel" || -z "$current_license_sha" ||
-	-z "$current_x64_sha" || -z "$current_arm64_sha" ]]; then
-	echo "Failed to parse package metadata from PKGBUILD" >&2
+latest_bunver="$(
+	python - "$downloaded_x64" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+data = Path(sys.argv[1]).read_bytes()
+match = re.search(
+    rb"Bun v([0-9]+\.[0-9]+\.[0-9]+) \(([^()\x00]+)\) Linux x64(?: \(baseline\))?",
+    data,
+)
+if match is None:
+    raise SystemExit("TWG x86_64 artifact does not contain a Bun version marker")
+print(match.group(1).decode("ascii"))
+PY
+)"
+if [[ ! "$latest_bunver" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+	echo "Unsupported Bun version in TWG x86_64 artifact: $latest_bunver" >&2
 	exit 1
 fi
 
-if [[ ! "$current_pkgrel" =~ ^[0-9]+$ ]]; then
+bun_name="bun-linux-x64-baseline-v${latest_bunver}.zip"
+bun_url="https://github.com/oven-sh/bun/releases/download/bun-v${latest_bunver}/bun-linux-x64-baseline.zip"
+bun_sums_url="https://github.com/oven-sh/bun/releases/download/bun-v${latest_bunver}/SHASUMS256.txt"
+bun_sums_path="$workdir/SHASUMS256-bun"
+downloaded_bun="$workdir/$bun_name"
+download "$bun_sums_url" "$bun_sums_path"
+latest_bun_sha="$(checksum_for "$bun_sums_path" 'bun-linux-x64-baseline.zip')"
+validate_checksum "$bun_name" "$latest_bun_sha"
+download "$bun_url" "$downloaded_bun"
+printf '%s  %s\n' "$latest_bun_sha" "$downloaded_bun" |
+	sha256sum --check --status
+
+python "$repo_root/twg-baseline-patcher.py" \
+	"$downloaded_x64" \
+	"$downloaded_bun" \
+	"$workdir/twg-linux-x64-v${latest_pkgver}-baseline"
+
+unset pkgname pkgver pkgrel _bunver arch source source_x86_64 source_aarch64
+unset sha256sums sha256sums_x86_64 sha256sums_aarch64
+# shellcheck disable=SC1091
+source ./PKGBUILD
+
+if [[ "$pkgname" != twg-cli-bin || "${#source[@]}" -ne 2 ||
+	"${#source_x86_64[@]}" -ne 2 || "${#source_aarch64[@]}" -ne 1 ||
+	"${#sha256sums[@]}" -ne 2 || "${#sha256sums_x86_64[@]}" -ne 2 ||
+	"${#sha256sums_aarch64[@]}" -ne 1 ]]; then
+	echo "PKGBUILD has unexpected source metadata" >&2
+	exit 1
+fi
+
+current_pkgver="$pkgver"
+current_pkgrel="$pkgrel"
+current_bunver="$_bunver"
+current_patcher_sha="${sha256sums[0]}"
+current_license_sha="${sha256sums[1]}"
+current_x64_sha="${sha256sums_x86_64[0]}"
+current_bun_sha="${sha256sums_x86_64[1]}"
+current_arm64_sha="${sha256sums_aarch64[0]}"
+actual_patcher_sha="$(sha256sum "$repo_root/twg-baseline-patcher.py" | awk '{print $1}')"
+
+if [[ ! "$current_pkgrel" =~ ^[0-9]+$ || ! "$current_bunver" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
 	echo "pkgrel must be an integer: $current_pkgrel" >&2
 	exit 1
 fi
@@ -161,8 +217,11 @@ if [[ "$latest_pkgver" != "$current_pkgver" ]]; then
 fi
 
 artifact_changed=false
-if [[ "$latest_license_sha" != "$current_license_sha" ||
+if [[ "$latest_bunver" != "$current_bunver" ||
+	"$latest_license_sha" != "$current_license_sha" ||
+	"$actual_patcher_sha" != "$current_patcher_sha" ||
 	"$latest_x64_sha" != "$current_x64_sha" ||
+	"$latest_bun_sha" != "$current_bun_sha" ||
 	"$latest_arm64_sha" != "$current_arm64_sha" ]]; then
 	artifact_changed=true
 fi
@@ -176,7 +235,9 @@ fi
 
 echo "Current version: ${current_pkgver}-${current_pkgrel}"
 echo "Latest version:  ${latest_pkgver}-${next_pkgrel}"
+echo "Bun version:       ${latest_bunver}"
 echo "x86_64 SHA-256:   ${latest_x64_sha}"
+echo "Bun baseline SHA:  ${latest_bun_sha}"
 echo "aarch64 SHA-256:  ${latest_arm64_sha}"
 echo "License SHA-256:  ${latest_license_sha}"
 
@@ -192,13 +253,64 @@ fi
 update_dir="$(mktemp -d "$repo_root/.twg-update.XXXXXX")"
 trap 'rm -rf "$workdir" "$update_dir"' EXIT
 
-sed \
-	-e "s/^pkgver=.*/pkgver=${latest_pkgver}/" \
-	-e "s/^pkgrel=.*/pkgrel=${next_pkgrel}/" \
-	-e "s/^sha256sums=.*/sha256sums=('${latest_license_sha}')/" \
-	-e "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('${latest_x64_sha}')/" \
-	-e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('${latest_arm64_sha}')/" \
-	PKGBUILD > "$update_dir/PKGBUILD"
+cp PKGBUILD "$update_dir/PKGBUILD"
+python - "$update_dir/PKGBUILD" \
+	"$latest_pkgver" "$next_pkgrel" "$latest_bunver" \
+	"$actual_patcher_sha" "$latest_license_sha" "$latest_x64_sha" \
+	"$latest_bun_sha" "$latest_arm64_sha" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+pkgver, pkgrel, bunver = sys.argv[2:5]
+patcher_sha, license_sha, x64_sha, bun_sha, arm64_sha = sys.argv[5:10]
+text = path.read_text()
+
+replacements = (
+    (r"^pkgver=[^\n]*$", f"pkgver={pkgver}"),
+    (r"^pkgrel=[^\n]*$", f"pkgrel={pkgrel}"),
+    (r"^_bunver=[^\n]*$", f"_bunver={bunver}"),
+    (
+        r"^source=\(\n.*?^\)",
+        "source=(\n"
+        "\t'twg-baseline-patcher.py'\n"
+        "\t'twg-cli-LICENSE::https://raw.githubusercontent.com/atlassian/twg-cli/main/LICENSE'\n"
+        ")",
+    ),
+    (
+        r"^source_x86_64=[^\n]*(?:\nsource_x86_64\+=[^\n]*)?",
+        f'source_x86_64=("twg-linux-x64-v${{pkgver}}::https://teamwork-graph.atlassian.com/cli/twg-linux-x64-v${{pkgver}}"'
+        f' "bun-linux-x64-baseline-v${{_bunver}}.zip::https://github.com/oven-sh/bun/releases/download/bun-v${{_bunver}}/bun-linux-x64-baseline.zip")',
+    ),
+    (
+        r"^source_aarch64=[^\n]*$",
+        'source_aarch64=("twg-linux-arm64-v${pkgver}::https://teamwork-graph.atlassian.com/cli/twg-linux-arm64-v${pkgver}")',
+    ),
+    (
+        r"^sha256sums=\(\n.*?^\)",
+        f"sha256sums=(\n\t'{patcher_sha}'\n\t'{license_sha}'\n)",
+    ),
+    (
+        r"^sha256sums_x86_64=\(\n.*?^\)",
+        f"sha256sums_x86_64=(\n\t'{x64_sha}'\n\t'{bun_sha}'\n)",
+    ),
+    (
+        r"^sha256sums_aarch64=[^\n]*$",
+        f"sha256sums_aarch64=('{arm64_sha}')",
+    ),
+)
+
+for pattern, replacement in replacements:
+    updated, count = re.subn(
+        pattern, replacement, text, count=1, flags=re.MULTILINE | re.DOTALL
+    )
+    if count != 1:
+        raise SystemExit(f"could not update PKGBUILD block: {pattern}")
+    text = updated
+
+path.write_text(text)
+PY
 
 (
 	cd "$update_dir"

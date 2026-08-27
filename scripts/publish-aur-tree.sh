@@ -7,7 +7,8 @@ usage() {
 Usage: publish-aur-tree.sh [file ...]
 
 Replace the AUR repository tree with the supplied package payload and push it
-to master. If no files are supplied, PKGBUILD and .SRCINFO are published.
+to master. If no files are supplied, PKGBUILD, .SRCINFO, and the baseline
+patcher are published.
 EOF
 }
 
@@ -39,7 +40,7 @@ commit_message="${AUR_COMMIT_MESSAGE:-upgpkg: ${pkgname} ${pkgver}-${pkgrel}}"
 if (($# > 0)); then
 	aur_files=("$@")
 else
-	aur_files=(PKGBUILD .SRCINFO)
+	aur_files=(PKGBUILD .SRCINFO twg-baseline-patcher.py)
 fi
 
 tmpdir="$(mktemp -d)"

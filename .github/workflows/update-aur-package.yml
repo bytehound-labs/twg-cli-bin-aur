@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Install packaging tools
         run: |
-          pacman -Syu --noconfirm --needed curl file git jq namcap openssh
+          pacman -Syu --noconfirm --needed curl file git jq namcap openssh python
 
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,4 +137,4 @@ jobs:
         if: steps.update.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_current)
         run: |
           cd "$GITHUB_WORKSPACE"
-          ./scripts/publish-aur-tree.sh PKGBUILD .SRCINFO
+          ./scripts/publish-aur-tree.sh PKGBUILD .SRCINFO twg-baseline-patcher.py

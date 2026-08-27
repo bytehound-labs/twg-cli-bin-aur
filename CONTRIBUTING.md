@@ -1,14 +1,15 @@
 # Maintaining twg-cli-bin
 
 This repository is the automation mirror for the `twg-cli-bin` AUR package.
-The AUR repository contains only `PKGBUILD` and `.SRCINFO`; workflows, scripts,
-and maintenance documentation stay in this GitHub repository.
+The AUR repository contains only `PKGBUILD`, `.SRCINFO`, and
+`twg-baseline-patcher.py`; workflows, scripts, and maintenance documentation
+stay in this GitHub repository.
 
 ## Requirements
 
 Package validation runs in an Arch Linux `base-devel` environment and requires
-`curl`, `file`, `git`, `jq`, `namcap`, `openssh`, and the standard `makepkg`
-toolchain.
+`curl`, `file`, `git`, `jq`, `namcap`, `openssh`, `python`, and the standard
+`makepkg` toolchain.
 
 ## Local workflow
 
@@ -24,8 +25,8 @@ Apply the stable-manifest update and regenerate `.SRCINFO`:
 ./scripts/update-upstream-release.sh
 ```
 
-Validate source URLs, checksums, ELF architectures, package metadata, and
-`namcap` output:
+Validate source URLs, checksums, ELF architectures, baseline-runtime rebasing,
+package metadata, and `namcap` output:
 
 ```bash
 ./scripts/validate-package.sh
@@ -53,9 +54,13 @@ provides the pinned AUR host keys used by CI.
 manifest every six hours. A changed version or checksum causes the workflow to:
 
 1. Update `PKGBUILD` and `.SRCINFO`.
-2. Validate both Linux artifacts and package metadata in an Arch container.
-3. Commit the generated files to the GitHub mirror.
-4. Publish the two AUR payload files over a strict, key-pinned SSH connection.
+2. Discover the Bun version embedded in the x86_64 artifact and download the
+   matching Bun x64-baseline archive.
+3. Validate both Linux artifacts, the rebased executable, and package metadata
+   in an Arch container.
+4. Commit the generated files to the GitHub mirror.
+5. Publish the three AUR payload files over a strict, key-pinned SSH
+   connection.
 
 Manual dispatch supports a full package build and an idempotent publish of the
 current package state. An unchanged scheduled run creates no commits.
@@ -94,7 +99,12 @@ updates its tracked payload. Trigger the workflow with `full_build` and
 
 - Stable release discovery uses the Atlassian manifest rather than GitHub
   releases because the public GitHub repository has no release/tag feed.
-- Vendor binaries are installed unchanged and are not stripped or debug-split.
+- The aarch64 vendor binary is installed unchanged. The x86_64 TWG application
+  payload is retained while its Bun runtime is rebased to the matching
+  x64-baseline runtime.
+- The rebasing helper is checksum-pinned as a local package source, and the
+  matching Bun baseline archive is checksum-pinned as an x86_64-only source.
+- Package binaries are not stripped or debug-split.
 - The package does not run `twg setup`, authenticate a user, install skills, or
   invoke the upstream self-updater.
 - A same-version asset, checksum, or upstream license change increments
