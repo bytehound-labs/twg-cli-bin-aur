@@ -62,4 +62,6 @@ This package is not maintained, endorsed, or sponsored by Atlassian.
 The [GitHub mirror](https://github.com/bytehound-labs/twg-cli-bin-aur) polls the
 stable manifest, validates the downloaded artifacts, updates the package
 metadata, and publishes only `PKGBUILD` and `.SRCINFO` to the
-[AUR package repository](https://aur.archlinux.org/packages/twg-cli-bin).
+[AUR package repository](https://aur.archlinux.org/packages/twg-cli-bin). The
+mirror uses the stable manifest as its release source rather than GitHub
+release metadata.

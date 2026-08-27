@@ -84,10 +84,11 @@ The matching public key must be registered with the AUR account that owns
 `twg-cli-bin`. The workflow uses the repository-scoped `GITHUB_TOKEN` for
 mirror commits and the `AUR_SSH_PRIVATE_KEY` secret only for AUR publishing.
 
-The AUR package must be created at
-<https://aur.archlinux.org/packages/twg-cli-bin> before the first publisher
-run can clone it. After the package repository exists, trigger the workflow
-with `full_build` and `publish_current` enabled.
+The first push to the empty
+`ssh://aur@aur.archlinux.org/twg-cli-bin.git` repository creates the AUR
+package base. If the package base already exists, the publisher clones it and
+updates its tracked payload. Trigger the workflow with `full_build` and
+`publish_current` enabled for an initial publication or recovery run.
 
 ## Packaging decisions
 

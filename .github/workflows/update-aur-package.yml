@@ -36,15 +36,15 @@ jobs:
       AUR_REMOTE: ssh://aur@aur.archlinux.org/twg-cli-bin.git
 
     steps:
+      - name: Install packaging tools
+        run: |
+          pacman -Syu --noconfirm --needed curl file git jq namcap openssh
+
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Install packaging tools
-        run: |
-          pacman -Syu --noconfirm --needed curl file git jq namcap openssh
 
       - name: Prepare build user
         run: |
