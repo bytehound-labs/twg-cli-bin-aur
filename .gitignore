@@ -6,3 +6,5 @@ bun-linux-*
 __pycache__/
 *.pkg.tar.*
 *.log
+/tags
+tags.*

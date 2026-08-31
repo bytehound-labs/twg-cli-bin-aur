@@ -71,6 +71,8 @@ The [GitHub mirror](https://github.com/bytehound-labs/twg-cli-bin-aur) polls the
 stable manifest, validates the downloaded artifacts, updates the package
 metadata, rebases the x86_64 runtime when needed, and publishes only
 `PKGBUILD`, `.SRCINFO`, and the rebasing helper to the
-[AUR package repository](https://aur.archlinux.org/packages/twg-cli-bin). The
-mirror uses the stable manifest as its release source rather than GitHub
-release metadata, and pins the matching Bun baseline archive by SHA-256.
+[AUR package repository](https://aur.archlinux.org/packages/twg-cli-bin). Mirror
+commits use the repository-scoped GitHub Actions token, while AUR publication
+uses a separate SSH key. The mirror uses the stable manifest as its release
+source rather than GitHub release metadata, and pins the matching Bun baseline
+archive by SHA-256.

@@ -106,11 +106,12 @@ jobs:
           git add PKGBUILD .SRCINFO
           git commit -m "chore: bump twg-cli-bin to ${{ steps.update.outputs.pkgver }}"
 
+          basic_auth="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: bearer ${GITHUB_TOKEN}"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic_auth}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
-          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+          unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 basic_auth
 
       - name: Configure AUR SSH
         if: steps.update.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_current)
